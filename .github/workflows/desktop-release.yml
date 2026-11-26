@@ -1,11 +1,17 @@
-name: Desktop Release
+name: Build & Release SPD
 
 on:
+  workflow_dispatch:
+    # Manual trigger from the Actions tab
   push:
     branches: [freebuff/c6b2f9f797db0894ab7f5d26]
     tags: ['v*']
 
 jobs:
+  android-release:
+    runs-on: ubuntu-latest
+    # Note: Android build requires Android SDK - not available in this cloud env
+    # This workflow builds the desktop JAR and generates release notes
   build:
     runs-on: ubuntu-latest
 
@@ -25,8 +31,16 @@ jobs:
       - name: Build desktop JAR
         run: ./gradlew :desktop:release
 
-      - name: Upload JAR as artifact
+      - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-jar
-          path: desktop/build/libs/desktop-*.jar
+          name: spd-desktop-jar
+          path: desktop/build/libs/desktop-4.0.3.jar
+
+      - name: Generate release info
+        run: |
+          echo "Desktop build ready" > release-info.txt
+          cat desktop/build/libs/desktop-4.0.3.jar | sha256sum >> release-info.txt
+          # Android APK build not possible in this environment
+          echo "SDK Android requis pour APK" >> release-info.txt
+          echo "Utilisez Javelin app sur Android pour lancer le .jar" >> release-info.txt
