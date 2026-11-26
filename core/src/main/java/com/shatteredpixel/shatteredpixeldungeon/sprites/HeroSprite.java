@@ -26,6 +26,7 @@ import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.HeroDisguise;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
+import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
 import com.watabou.gltextures.SmartTexture;
 import com.watabou.gltextures.TextureCache;
@@ -36,6 +37,7 @@ import com.watabou.noosa.TextureFilm;
 import com.watabou.utils.Callback;
 import com.watabou.utils.PointF;
 import com.watabou.utils.RectF;
+import com.watabou.utils.Reflection;
 
 public class HeroSprite extends CharSprite {
 	
@@ -48,6 +50,14 @@ public class HeroSprite extends CharSprite {
 	
 	private Animation fly;
 	private Animation read;
+	
+	private boolean morphed = false;
+	//the form currently worn, kept so the look survives an animation set rebuild
+	private Mob morphForm;
+	
+	public boolean isMorphed(){
+		return morphed;
+	}
 
 	public HeroSprite() {
 		super();
@@ -69,6 +79,12 @@ public class HeroSprite extends CharSprite {
 	}
 	
 	public void updateArmor() {
+
+		//a rebuilt animation set would otherwise put the hero back into their own body
+		if (morphed && morphForm != null){
+			morph( morphForm );
+			return;
+		}
 
 		TextureFilm film = new TextureFilm( tiers(), Dungeon.hero.tier(), FRAME_WIDTH, FRAME_HEIGHT );
 		
@@ -99,6 +115,48 @@ public class HeroSprite extends CharSprite {
 			idle();
 		else
 			die();
+	}
+	
+	//used by the Morph buff to give the hero the appearance and animations of a monster
+	public void morph( Mob mob ){
+		
+		if (mob == null || mob.spriteClass == null) return;
+		
+		MobSprite proto = (MobSprite)Reflection.newInstance( mob.spriteClass );
+		if (proto.idle == null || proto.run == null || proto.die == null) return;
+		
+		morphed = true;
+		morphForm = mob;
+		
+		texture( proto.texture );
+		idle = proto.idle;
+		run = proto.run;
+		die = proto.die;
+		attack = proto.attack != null ? proto.attack : proto.idle;
+		zap = proto.zap != null ? proto.zap : attack;
+		operate = proto.operate != null ? proto.operate : attack;
+		fly = proto.idle;
+		read = proto.idle;
+		
+		if (ch.isAlive())
+			idle();
+		else
+			die();
+	}
+	
+	public void unmorph(){
+		if (!morphed) return;
+		morphed = false;
+		morphForm = null;
+		
+		HeroClass cls = Dungeon.hero.heroClass;
+		HeroDisguise disguise = Dungeon.hero.buff( HeroDisguise.class );
+		if (disguise != null && disguise.getDisguise() != null){
+			cls = disguise.getDisguise();
+		}
+		
+		texture( cls.spritesheet() );
+		updateArmor();
 	}
 	
 	@Override

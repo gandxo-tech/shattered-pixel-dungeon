@@ -56,6 +56,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LostInventory;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MindVision;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Momentum;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MonkEnergy;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Morph;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Paralysis;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.PhysicalEmpower;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging;
@@ -513,6 +514,9 @@ public class Hero extends Char {
 
 	@Override
 	public int attackSkill( Char target ) {
+		Mob form = morphForm();
+		if (form != null) return form.attackSkill( target );
+		
 		KindOfWeapon wep = belongings.attackingWeapon();
 		
 		float accuracy = 1;
@@ -671,6 +675,9 @@ public class Hero extends Char {
 	
 	@Override
 	public int damageRoll() {
+		Mob form = morphForm();
+		if (form != null) return form.damageRoll();
+		
 		KindOfWeapon wep = belongings.attackingWeapon();
 		int dmg;
 
@@ -1531,8 +1538,21 @@ public class Hero extends Char {
 		resting = fullRest;
 	}
 	
+	//While morphed, the hero fights with the chosen monster's stats and on-hit effects
+	private Mob morphForm(){
+		Morph morph = buff( Morph.class );
+		return morph == null ? null : morph.proto();
+	}
+	
 	@Override
 	public int attackProc( final Char enemy, int damage ) {
+		Morph morph = buff( Morph.class );
+		if (morph != null){
+			// While morphed the blow is the monster's: its on-hit effect is the only
+			// proc that applies. Weapon enchantments and hero talents are fully ignored.
+			return morph.onHit( enemy, damage );
+		}
+
 		damage = super.attackProc( enemy, damage );
 
 		KindOfWeapon wep;

@@ -25,12 +25,14 @@ import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.GamesInProgress;
 import com.shatteredpixel.shatteredpixeldungeon.SPDSettings;
 import com.shatteredpixel.shatteredpixeldungeon.ShatteredPixelDungeon;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Morph;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.HeroSelectScene;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.RankingsScene;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.TitleScene;
+import com.shatteredpixel.shatteredpixeldungeon.ui.BuffIndicator;
 import com.shatteredpixel.shatteredpixeldungeon.ui.Icons;
 import com.shatteredpixel.shatteredpixeldungeon.ui.RedButton;
 import com.shatteredpixel.shatteredpixeldungeon.ui.Window;
@@ -60,6 +62,44 @@ public class WndGame extends Window {
 			}
 		});
 		curBtn.icon(Icons.get(Icons.PREFS));
+
+		//custom feature: metamorphosis into any monster
+		if (Dungeon.hero != null && Dungeon.hero.isAlive()) {
+
+			final Morph morph = Dungeon.hero.buff( Morph.class );
+
+			addButton( curBtn = new RedButton( morph == null
+					? Messages.get(this, "morph")
+					: Messages.get(this, "morph_current", morph.formName()) ) {
+				@Override
+				protected void onClick() {
+					hide();
+					GameScene.show( new WndMorph() );
+				}
+			} );
+			curBtn.icon( Icons.get(Icons.BUFFS) );
+
+			if (morph != null){
+				addButton( curBtn = new RedButton( Messages.get(this, "morph_ability") ) {
+					@Override
+					protected void onClick() {
+						hide();
+						morph.useAbility();
+					}
+				} );
+				curBtn.icon( Icons.get(Icons.TARGET) );
+
+				addButton( curBtn = new RedButton( Messages.get(this, "morph_revert") ) {
+					@Override
+					protected void onClick() {
+						hide();
+						morph.detach();
+						BuffIndicator.refreshHero();
+					}
+				} );
+				curBtn.icon( Icons.get(Icons.REPEAT) );
+			}
+		}
 
 		// Challenges window
 		if (Dungeon.challenges > 0) {

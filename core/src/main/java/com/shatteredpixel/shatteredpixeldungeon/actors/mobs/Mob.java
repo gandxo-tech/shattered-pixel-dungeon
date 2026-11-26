@@ -259,6 +259,11 @@ public abstract class Mob extends Char {
 		return Reflection.newInstance(spriteClass);
 	}
 	
+	//lets the Morph buff reuse this monster's on-hit effects when the hero takes its form
+	public int morphAttackProc( Char enemy, int damage ){
+		return attackProc( enemy, damage );
+	}
+	
 	@Override
 	protected boolean act() {
 		
