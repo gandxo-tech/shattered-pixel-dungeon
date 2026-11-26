@@ -14,3 +14,9 @@ jobs:
         with:
           name: spd-apk
           path: android/build/outputs/apk/debug/*.apk
+      - name: ⚠️ Note SDK Android
+        run: |-
+          echo 'Si build échoue : SDK Android manquant'
+          echo 'Sur votre PC : installez Android Studio'
+          echo 'Ou utilisez le .jar + Javelin sur Android'
+          echo 'Voir les instructions précédentes'
