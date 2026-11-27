@@ -28,6 +28,7 @@ import com.shatteredpixel.shatteredpixeldungeon.SPDAction;
 import com.shatteredpixel.shatteredpixeldungeon.SPDSettings;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.HoldFast;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Morph;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Belongings;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
@@ -42,6 +43,7 @@ import com.shatteredpixel.shatteredpixeldungeon.tiles.DungeonTerrainTilemap;
 import com.shatteredpixel.shatteredpixeldungeon.windows.WndBag;
 import com.shatteredpixel.shatteredpixeldungeon.windows.WndKeyBindings;
 import com.shatteredpixel.shatteredpixeldungeon.windows.WndMessage;
+import com.shatteredpixel.shatteredpixeldungeon.windows.WndMorph;
 import com.shatteredpixel.shatteredpixeldungeon.windows.WndQuickBag;
 import com.shatteredpixel.shatteredpixeldungeon.windows.WndUseItem;
 import com.watabou.input.ControllerHandler;
@@ -63,6 +65,7 @@ public class Toolbar extends Component {
 	private Tool btnWait;
 	private Tool btnSearch;
 	private Tool btnInventory;
+	private Tool btnMorph;
 	private QuickslotTool[] btnQuick;
 	private SlotSwapTool btnSwap;
 	
@@ -315,6 +318,9 @@ public class Toolbar extends Component {
 			}
 		});
 		btnSearch.icon( 192, 0, 16, 16 );
+
+		//quick access to the metamorphosis window, without opening the game menu
+		add(btnMorph = new MorphTool());
 		
 		add(btnInventory = new Tool(0, 0, 24, 26) {
 			private CurrencyIndicator ind;
@@ -555,7 +561,8 @@ public class Toolbar extends Component {
 
 		if (SPDSettings.interfaceSize() > 0){
 			btnInventory.setPos(right - btnInventory.width(), y);
-			btnWait.setPos(btnInventory.left() - btnWait.width(), y);
+			btnMorph.setPos(btnInventory.left() - btnMorph.width(), y);
+			btnWait.setPos(btnMorph.left() - btnWait.width(), y);
 			btnSearch.setPos(btnWait.left() - btnSearch.width(), y);
 
 			right = btnSearch.left();
@@ -608,10 +615,11 @@ public class Toolbar extends Component {
 				btnSearch.setPos(btnWait.right(), y);
 
 				btnInventory.setPos(right - btnInventory.width(), y);
+				btnMorph.setPos(btnInventory.left() - btnMorph.width(), y);
 
 				float left = 0;
 
-				btnQuick[startingSlot].setPos(btnInventory.left() - btnQuick[startingSlot].width(), y + 2);
+				btnQuick[startingSlot].setPos(btnMorph.left() - btnQuick[startingSlot].width(), y + 2);
 				for (int i = startingSlot+1; i <= endingSlot; i++) {
 					btnQuick[i].setPos(btnQuick[i-1].left() - btnQuick[i].width(), y + 2);
 					shift = btnSearch.right() - btnQuick[i].left();
@@ -626,7 +634,7 @@ public class Toolbar extends Component {
 
 			//center = group but.. well.. centered, so all we need to do is pre-emptively set the right side further in.
 			case CENTER:
-				float toolbarWidth = btnWait.width() + btnSearch.width() + btnInventory.width();
+				float toolbarWidth = btnWait.width() + btnSearch.width() + btnInventory.width() + btnMorph.width();
 				for(Button slot : btnQuick){
 					if (slot.visible) toolbarWidth += slot.width();
 				}
@@ -637,8 +645,9 @@ public class Toolbar extends Component {
 				btnWait.setPos(right - btnWait.width(), y);
 				btnSearch.setPos(btnWait.left() - btnSearch.width(), y);
 				btnInventory.setPos(btnSearch.left() - btnInventory.width(), y);
+				btnMorph.setPos(btnInventory.left() - btnMorph.width(), y);
 
-				btnQuick[startingSlot].setPos(btnInventory.left() - btnQuick[startingSlot].width(), y + 2);
+				btnQuick[startingSlot].setPos(btnMorph.left() - btnQuick[startingSlot].width(), y + 2);
 				for (int i = startingSlot+1; i <= endingSlot; i++) {
 					btnQuick[i].setPos(btnQuick[i-1].left() - btnQuick[i].width(), y + 2);
 					shift = -btnQuick[i].left();
@@ -669,6 +678,7 @@ public class Toolbar extends Component {
 			btnWait.setPos( (right - btnWait.right()), y);
 			btnSearch.setPos( (right - btnSearch.right()), y);
 			btnInventory.setPos( (right - btnInventory.right()), y);
+			btnMorph.setPos( (right - btnMorph.right()), y);
 
 			for(int i = startingSlot; i <= endingSlot; i++) {
 				btnQuick[i].setPos( right - btnQuick[i].right(), y+2);
@@ -709,6 +719,7 @@ public class Toolbar extends Component {
 		btnWait.alpha( value );
 		btnSearch.alpha( value );
 		btnInventory.alpha( value );
+		btnMorph.alpha( value );
 		for (QuickslotTool tool : btnQuick){
 			tool.alpha(value);
 		}
@@ -812,6 +823,65 @@ public class Toolbar extends Component {
 		}
 	}
 	
+	//one tap opens the metamorphosis window, straight from the toolbar
+	private static class MorphTool extends Tool {
+
+		private static final int COLOR = 0xC9A227;
+
+		private Image icon;
+
+		public MorphTool(){
+			super( 24, 0, 20, 26 );
+		}
+
+		@Override
+		protected void createChildren(){
+			super.createChildren();
+			icon = Icons.get( Icons.SKULL );
+			add( icon );
+		}
+
+		@Override
+		protected void layout(){
+			super.layout();
+			icon.x = x + (width - icon.width())/2f;
+			icon.y = y + (height - icon.height())/2f;
+			PixelScene.align( icon );
+		}
+
+		@Override
+		public void update(){
+			super.update();
+			//the icon lights up while a form is worn, so the current body is readable at a glance
+			if (Dungeon.hero != null){
+				icon.tint( Dungeon.hero.buff( Morph.class ) != null ? 0xFFFFFF : COLOR, 1f );
+			}
+		}
+
+		@Override
+		protected void onClick(){
+			if (Dungeon.hero != null && Dungeon.hero.ready && !GameScene.cancel()){
+				GameScene.show( new WndMorph() );
+			}
+		}
+
+		//long press skips the window and fires the current form's ability
+		@Override
+		protected boolean onLongClick(){
+			Morph morph = Dungeon.hero == null ? null : Dungeon.hero.buff( Morph.class );
+			if (morph != null && morph.form() != null && Dungeon.hero.ready && !GameScene.cancel()){
+				morph.useAbility();
+				return true;
+			}
+			return false;
+		}
+
+		@Override
+		protected String hoverText(){
+			return Messages.titleCase( Messages.get( WndMorph.class, "title" ) );
+		}
+	}
+
 	private static class QuickslotTool extends Tool {
 		
 		private QuickSlotButton slot;

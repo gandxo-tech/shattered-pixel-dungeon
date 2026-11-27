@@ -31,9 +31,12 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.GnollGeomancer;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.effects.Beam;
+import com.shatteredpixel.shatteredpixeldungeon.effects.Flare;
 import com.shatteredpixel.shatteredpixeldungeon.effects.FloatingText;
 import com.shatteredpixel.shatteredpixeldungeon.effects.Splash;
 import com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfTeleportation;
+import com.shatteredpixel.shatteredpixeldungeon.levels.Terrain;
+import com.shatteredpixel.shatteredpixeldungeon.levels.features.Door;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.CellSelector;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
@@ -84,6 +87,42 @@ public class Morph extends Buff {
 		if (target != null && target.sprite != null){
 			fx( false );
 			fx( true );
+			if (form != null) cinematic();
+		}
+	}
+
+	/**
+	 * Short transformation flourish: a flare, a flash, a sound and a line, so that
+	 * taking a new body feels like an event rather than a silent stat swap.
+	 */
+	private void cinematic(){
+		if (!(target instanceof Hero)) return;
+
+		if (target.sprite.parent != null){
+			new Flare( 6, 20 ).color( 0xBB88FF, true ).show( target.sprite, 1.2f );
+		}
+		Sample.INSTANCE.play( Assets.Sounds.TELEPORT );
+		GameScene.flash( 0x33000000 );
+		target.sprite.showStatus( CharSprite.DEFAULT, formName() );
+		GLog.h( Messages.get(Morph.class, "say.transform", formName()) );
+	}
+
+	/**
+	 * Says one of the form's lines. Keys live under actors.buffs.morph.say.*
+	 */
+	private void say( String key ){
+		GLog.i( Messages.get(Morph.class, "say." + key) );
+	}
+
+	/**
+	 * Called by the door when the morphed hero shoulders it open.
+	 */
+	public void onDoorOpened( int pos ){
+		if (!(target instanceof Hero) || form == null) return;
+
+		Splash.at( pos, 0x8A7F66, 4 );
+		if (Random.Int( 3 ) == 0){
+			say( "door" );
 		}
 	}
 
@@ -179,6 +218,17 @@ public class Morph extends Buff {
 				if (cell == null) return;
 
 				Char ch = Actor.findChar(cell);
+
+				//a closed door is a valid target: the form simply pushes it open
+				if (ch == null && Dungeon.level.map[cell] == Terrain.DOOR
+						&& Dungeon.level.heroFOV[cell]){
+					hero.sprite.turnTo( hero.pos, cell );
+					Door.enter( cell );
+					say( "door" );
+					hero.spendAndNext( 1f );
+					return;
+				}
+
 				if (ch == null || ch == hero){
 					GLog.w( Messages.get(Morph.class, "no_target") );
 					return;
@@ -192,6 +242,11 @@ public class Morph extends Buff {
 				if (ch.invisible > 0 || !Dungeon.level.heroFOV[ch.pos]){
 					GLog.w( Messages.get(Morph.class, "no_sight") );
 					return;
+				}
+
+				//each form has its own battle cry, but not on every single action
+				if (Random.Int( 3 ) == 0){
+					say( info.ability.name().toLowerCase() );
 				}
 
 				switch (info.ability){

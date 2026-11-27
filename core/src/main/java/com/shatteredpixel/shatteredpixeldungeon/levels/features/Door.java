@@ -25,6 +25,7 @@ import com.shatteredpixel.shatteredpixeldungeon.Assets;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Morph;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Terrain;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
@@ -39,6 +40,12 @@ public class Door {
 		if (Dungeon.level.heroFOV[pos]) {
 			Dungeon.observe();
 			Sample.INSTANCE.play( Assets.Sounds.OPEN );
+		}
+
+		//a morphed hero pushes doors open like the monster it looks like
+		if (Dungeon.hero != null && Dungeon.hero.pos == pos) {
+			Morph morph = Dungeon.hero.buff( Morph.class );
+			if (morph != null) morph.onDoorOpened( pos );
 		}
 	}
 

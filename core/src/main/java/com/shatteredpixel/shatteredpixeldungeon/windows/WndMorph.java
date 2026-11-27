@@ -28,101 +28,131 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MorphForms;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.PixelScene;
+import com.shatteredpixel.shatteredpixeldungeon.sprites.CharSprite;
 import com.shatteredpixel.shatteredpixeldungeon.ui.BuffIndicator;
 import com.shatteredpixel.shatteredpixeldungeon.ui.RedButton;
 import com.shatteredpixel.shatteredpixeldungeon.ui.RenderedTextBlock;
 import com.shatteredpixel.shatteredpixeldungeon.ui.ScrollPane;
 import com.shatteredpixel.shatteredpixeldungeon.ui.Window;
 import com.watabou.noosa.ui.Component;
+import com.watabou.utils.Reflection;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
+/**
+ * Lets the hero pick a monster to become, and shows what that form looks like and does.
+ *
+ * The monster itself is drawn above the list, with its health, damage, accuracy, defense
+ * and the ability the form grants, so the choice can be made with the eyes open.
+ */
 public class WndMorph extends Window {
 
-	private static final int WIDTH		= 135;
-	private static final int HEIGHT		= 180;
-	private static final int BTN_HEIGHT	= 16;
-	private static final int GAP		= 2;
+	private static final int WIDTH_P		= 156;
+	private static final int HEIGHT_P		= 194;
+	private static final int WIDTH_L		= 206;
+	private static final int HEIGHT_L		= 130;
+	private static final int BTN_HEIGHT		= 16;
+	private static final int GAP			= 2;
+	private static final int PREVIEW		= 32;
+	private static final int FORM_BTN_H		= 13;
+
+	private final int width;
+	private final int winHeight;
+
+	private Class<? extends Mob> selected;
+	private Component detail;
+	private ScrollPane pane;
+	private RenderedTextBlock title;
+
+	private final HashMap<Class<? extends Mob>, RedButton> buttons = new HashMap<>();
 
 	public WndMorph(){
 
 		super();
 
-		resize( WIDTH, HEIGHT );
+		Morph morph = morph();
+		selected = morph != null ? morph.form() : null;
 
-		ScrollPane pane = new ScrollPane( new Component() );
-		add( pane );
-		pane.setRect( 0, 0, WIDTH, HEIGHT );
+		width = PixelScene.landscape() ? WIDTH_L : WIDTH_P;
 
-		Component content = pane.content();
+		int height = PixelScene.landscape() ? HEIGHT_L : HEIGHT_P;
+		if (PixelScene.uiCamera != null){
+			height = Math.min( height, (int)PixelScene.uiCamera.height - 12 );
+		}
+		winHeight = Math.max( 80, height );
 
-		RenderedTextBlock title = PixelScene.renderTextBlock( Messages.get(this, "title"), 9 );
+		resize( width, winHeight );
+
+		title = PixelScene.renderTextBlock( Messages.get(this, "title"), 9 );
 		title.hardlight( TITLE_COLOR );
 		title.setPos( 0, 0 );
-		content.add( title );
+		add( title );
 
-		int top = (int)title.bottom() + 3;
+		detail = buildDetail();
+		add( detail );
+		detail.setRect( 0, title.bottom() + 2, width, detail.height() );
 
-		final Morph morph = Dungeon.hero != null ? Dungeon.hero.buff( Morph.class ) : null;
-		final Class<? extends Mob> current = morph == null ? null : morph.form();
+		float top = detail.bottom() + 2;
 
-		RenderedTextBlock currentForm = PixelScene.renderTextBlock( Messages.get(this, "current",
-				morph == null ? Messages.get(this, "none") : morph.formName()), 6 );
-		currentForm.setPos( 0, top );
-		content.add( currentForm );
-		top = (int)currentForm.bottom() + 2;
+		pane = new ScrollPane( new Component() );
+		add( pane );
+		pane.setRect( 0, top, width, Math.max( 24, winHeight - top ) );
 
-		if (morph != null && current != null){
+		fillList();
+		updateButtonColors();
+	}
 
-			RenderedTextBlock ability = PixelScene.renderTextBlock( Messages.get(this, "ability_of",
-					morph.abilityName()), 6 );
-			ability.hardlight( 0xFFFF44 );
-			ability.setPos( 0, top );
-			content.add( ability );
-			top = (int)ability.bottom() + 2;
+	private Morph morph(){
+		return Dungeon.hero == null ? null : Dungeon.hero.buff( Morph.class );
+	}
 
-			RenderedTextBlock desc = PixelScene.renderTextBlock( morph.abilityDesc(), 6 );
-			desc.maxWidth( WIDTH );
-			desc.setPos( 0, top );
-			content.add( desc );
-			top = (int)desc.bottom() + 4;
+	/**
+	 * Selects a form and redraws the preview, without changing the hero's body yet.
+	 */
+	private void select( Class<? extends Mob> form ){
+		if (selected == form) return;
+		selected = form;
 
-			RedButton use = new RedButton( Messages.get(this, "ability") ){
-				@Override
-				protected void onClick(){
-					hide();
-					morph.useAbility();
-				}
-			};
-			use.setRect( 0, top, WIDTH, BTN_HEIGHT );
-			content.add( use );
-			top += BTN_HEIGHT + GAP;
+		detail.killAndErase();
+		detail = buildDetail();
+		add( detail );
+		detail.setRect( 0, title.bottom() + 2, width, detail.height() );
 
-			RedButton revert = new RedButton( Messages.get(this, "revert") ){
-				@Override
-				protected void onClick(){
-					hide();
-					morph.detach();
-					BuffIndicator.refreshHero();
-				}
-			};
-			revert.setRect( 0, top, WIDTH, BTN_HEIGHT );
-			content.add( revert );
-			top += BTN_HEIGHT + GAP + 2;
+		float top = detail.bottom() + 2;
+		pane.setRect( 0, top, width, Math.max( 24, winHeight - top ) );
+
+		updateButtonColors();
+	}
+
+	private void updateButtonColors(){
+		Morph morph = morph();
+		Class<? extends Mob> current = morph == null ? null : morph.form();
+
+		for (Map.Entry<Class<? extends Mob>, RedButton> entry : buttons.entrySet()){
+			if (entry.getKey() == current){
+				entry.getValue().textColor( TITLE_COLOR );
+			} else if (entry.getKey() == selected){
+				entry.getValue().textColor( 0x66CCFF );
+			} else {
+				entry.getValue().textColor( WHITE );
+			}
 		}
+	}
 
-		RenderedTextBlock forms = PixelScene.renderTextBlock( Messages.get(this, "forms"), 7 );
-		forms.hardlight( TITLE_COLOR );
-		forms.setPos( 0, top );
-		content.add( forms );
-		top = (int)forms.bottom() + 2;
+	private void fillList(){
+
+		Component content = pane.content();
+		float top = 0;
 
 		for (String category : MorphForms.groups().keySet()){
 
-			RenderedTextBlock header = PixelScene.renderTextBlock( category, 6 );
+			RenderedTextBlock header = PixelScene.renderTextBlock( category, 7 );
+			header.hardlight( TITLE_COLOR );
 			header.setPos( 0, top );
 			content.add( header );
-			top = (int)header.bottom() + 1;
+			top = header.bottom() + 1;
 
 			ArrayList<Class<? extends Mob>> list = MorphForms.groups().get( category );
 
@@ -135,28 +165,161 @@ public class WndMorph extends Window {
 
 					final Class<? extends Mob> form = list.get( index );
 
-					RedButton btn = new RedButton( MorphForms.nameOf( form ) ){
+					RedButton btn = new RedButton( MorphForms.nameOf( form ), 6 ){
 						@Override
 						protected void onClick(){
-							hide();
-							Buff.affect( Dungeon.hero, Morph.class ).setForm( form );
-							BuffIndicator.refreshHero();
+							select( form );
 						}
 					};
-					btn.setRect( j == 0 ? 0 : WIDTH/2 + 1, top, WIDTH/2 - 1, BTN_HEIGHT );
-					if (form == current){
-						btn.textColor( 0xFFFF44 );
-					}
+					btn.setRect( j == 0 ? 0 : width/2 + 1, top, width/2 - 1, FORM_BTN_H );
 					content.add( btn );
+					buttons.put( form, btn );
 				}
 
-				top += BTN_HEIGHT + GAP;
+				top += FORM_BTN_H + 1;
 			}
 
 			top += 2;
 		}
 
-		content.setRect( 0, 0, WIDTH, top );
-		pane.setRect( 0, 0, WIDTH, HEIGHT );
+		content.setRect( 0, 0, width, top );
+	}
+
+	/**
+	 * Builds the preview panel: the monster's sprite, its stats, its ability and the actions.
+	 */
+	private Component buildDetail(){
+
+		Component panel = new Component();
+
+		Mob mob = null;
+		if (selected != null){
+			try {
+				mob = Reflection.newInstance( selected );
+			} catch (Exception ignored){ }
+		}
+
+		if (mob != null){
+			try {
+				CharSprite img = mob.sprite();
+				if (img != null){
+					float scale = Math.min( 1f, PREVIEW / Math.max( img.width(), img.height() ) );
+					img.scale.set( scale );
+					img.x = (PREVIEW - img.width()*scale) / 2f;
+					img.y = (PREVIEW - img.height()*scale) / 2f;
+					panel.add( img );
+				}
+			} catch (Exception ignored){ }
+		}
+
+		float left = PREVIEW + 2;
+
+		RenderedTextBlock name = PixelScene.renderTextBlock(
+				selected == null ? Messages.get(this, "none") : MorphForms.nameOf( selected ), 9 );
+		name.hardlight( TITLE_COLOR );
+		name.maxWidth( (int)(width - left) );
+		name.setPos( left, 0 );
+		panel.add( name );
+
+		float textBottom = name.bottom();
+
+		if (selected != null){
+
+			RenderedTextBlock stats = PixelScene.renderTextBlock( stats( mob ), 6 );
+			stats.maxWidth( (int)(width - left) );
+			stats.setPos( left, name.bottom() + 1 );
+			panel.add( stats );
+			textBottom = stats.bottom();
+
+			MorphForms.Form info = MorphForms.form( selected );
+
+			float y = Math.max( PREVIEW, textBottom ) + 2;
+
+			RenderedTextBlock ability = PixelScene.renderTextBlock(
+					Messages.get(this, "ability_of", info.abilityName()), 6 );
+			ability.hardlight( 0xFFFF44 );
+			ability.maxWidth( width );
+			ability.setPos( 0, y );
+			panel.add( ability );
+
+			RenderedTextBlock desc = PixelScene.renderTextBlock( info.abilityDesc(), 6 );
+			desc.maxWidth( width );
+			desc.setPos( 0, ability.bottom() + 1 );
+			panel.add( desc );
+
+			Morph current = morph();
+			y = desc.bottom() + 3;
+			buildActions( panel, y, current != null && current.form() != null );
+			return finish( panel, y + BTN_HEIGHT );
+		}
+
+		RenderedTextBlock hint = PixelScene.renderTextBlock( Messages.get(this, "choose_hint"), 6 );
+		hint.maxWidth( width );
+		hint.setPos( 0, Math.max( PREVIEW, textBottom ) + 2 );
+		panel.add( hint );
+		return finish( panel, hint.bottom() + 2 );
+	}
+
+	private Component finish( Component panel, float height ){
+		panel.setRect( 0, 0, width, height );
+		return panel;
+	}
+
+	private void buildActions( Component panel, float top, boolean hasForm ){
+
+		int count = hasForm ? 3 : 1;
+		float btnWidth = (width - GAP*(count - 1)) / count;
+
+		RedButton adopt = new RedButton( Messages.get(this, "adopt"), 7 ){
+			@Override
+			protected void onClick(){
+				if (selected == null || Dungeon.hero == null) return;
+				Buff.affect( Dungeon.hero, Morph.class ).setForm( selected );
+				BuffIndicator.refreshHero();
+				hide();
+			}
+		};
+		adopt.setRect( 0, top, btnWidth, BTN_HEIGHT );
+		panel.add( adopt );
+
+		if (!hasForm) return;
+
+		RedButton use = new RedButton( Messages.get(this, "use"), 7 ){
+			@Override
+			protected void onClick(){
+				Morph morph = morph();
+				hide();
+				if (morph != null) morph.useAbility();
+			}
+		};
+		use.setRect( btnWidth + GAP, top, btnWidth, BTN_HEIGHT );
+		panel.add( use );
+
+		RedButton human = new RedButton( Messages.get(this, "human"), 7 ){
+			@Override
+			protected void onClick(){
+				Morph morph = morph();
+				hide();
+				if (morph != null){
+					morph.detach();
+					BuffIndicator.refreshHero();
+				}
+			}
+		};
+		human.setRect( (btnWidth + GAP)*2, top, btnWidth, BTN_HEIGHT );
+		panel.add( human );
+	}
+
+	private String stats( Mob mob ){
+		if (mob == null) return Messages.get( this, "stats_unknown" );
+		try {
+			return Messages.get( this, "stats",
+					mob.HT,
+					mob.damageRoll(),
+					mob.attackSkill( Dungeon.hero ),
+					mob.defenseSkill( Dungeon.hero ) );
+		} catch (Exception e){
+			return Messages.get( this, "stats_hp", mob.HT );
+		}
 	}
 }
