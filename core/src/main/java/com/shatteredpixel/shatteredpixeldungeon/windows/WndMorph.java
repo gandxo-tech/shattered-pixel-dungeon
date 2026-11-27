@@ -34,6 +34,7 @@ import com.shatteredpixel.shatteredpixeldungeon.ui.RedButton;
 import com.shatteredpixel.shatteredpixeldungeon.ui.RenderedTextBlock;
 import com.shatteredpixel.shatteredpixeldungeon.ui.ScrollPane;
 import com.shatteredpixel.shatteredpixeldungeon.ui.Window;
+import com.watabou.noosa.Image;
 import com.watabou.noosa.ui.Component;
 import com.watabou.utils.Reflection;
 
@@ -192,23 +193,22 @@ public class WndMorph extends Window {
 
 		Component panel = new Component();
 
-		Mob mob = null;
-		if (selected != null){
-			try {
-				mob = Reflection.newInstance( selected );
-			} catch (Exception ignored){ }
-		}
+		final MorphForms.Form info = selected == null ? null : MorphForms.form( selected );
+		final MorphForms.Stats stats = info == null ? MorphForms.Stats.EMPTY : info.stats();
 
-		if (mob != null){
+		//only the monster's picture is built here: it is a static image taken from a
+		// sprite, so nothing in the window is an actor or ever needs a turn
+		if (stats.sprite != null){
 			try {
-				CharSprite img = mob.sprite();
-				if (img != null){
-					float scale = Math.min( 1f, PREVIEW / Math.max( img.width(), img.height() ) );
-					img.scale.set( scale );
-					img.x = (PREVIEW - img.width()*scale) / 2f;
-					img.y = (PREVIEW - img.height()*scale) / 2f;
-					panel.add( img );
-				}
+				CharSprite sprite = Reflection.newInstance( stats.sprite );
+				sprite.idle();
+				Image img = new Image( sprite );
+
+				float scale = Math.min( 1f, PREVIEW / Math.max( img.width(), img.height() ) );
+				img.scale.set( scale );
+				img.x = (PREVIEW - img.width()*scale) / 2f;
+				img.y = (PREVIEW - img.height()*scale) / 2f;
+				panel.add( img );
 			} catch (Exception ignored){ }
 		}
 
@@ -225,13 +225,11 @@ public class WndMorph extends Window {
 
 		if (selected != null){
 
-			RenderedTextBlock stats = PixelScene.renderTextBlock( stats( mob ), 6 );
-			stats.maxWidth( (int)(width - left) );
-			stats.setPos( left, name.bottom() + 1 );
-			panel.add( stats );
-			textBottom = stats.bottom();
-
-			MorphForms.Form info = MorphForms.form( selected );
+			RenderedTextBlock statsBlock = PixelScene.renderTextBlock( statsLine( stats ), 6 );
+			statsBlock.maxWidth( (int)(width - left) );
+			statsBlock.setPos( left, name.bottom() + 1 );
+			panel.add( statsBlock );
+			textBottom = statsBlock.bottom();
 
 			float y = Math.max( PREVIEW, textBottom ) + 2;
 
@@ -310,16 +308,36 @@ public class WndMorph extends Window {
 		panel.add( human );
 	}
 
-	private String stats( Mob mob ){
-		if (mob == null) return Messages.get( this, "stats_unknown" );
-		try {
-			return Messages.get( this, "stats",
-					mob.HT,
-					mob.damageRoll(),
-					mob.attackSkill( Dungeon.hero ),
-					mob.defenseSkill( Dungeon.hero ) );
-		} catch (Exception e){
-			return Messages.get( this, "stats_hp", mob.HT );
+	/**
+	 * Builds the stat line from the frozen numbers of the form, never from a live monster.
+	 */
+	private String statsLine( MorphForms.Stats stats ){
+
+		if (stats == null || !stats.known()){
+			return Messages.get( this, "stats_unknown" );
 		}
+
+		StringBuilder line = new StringBuilder();
+		if (stats.hp > 0){
+			line.append( Messages.get( this, "stat_hp", stats.hp ) );
+		}
+		if (stats.dmgMax > 0){
+			append( line, Messages.get( this, "stat_atk", stats.dmgMin, stats.dmgMax ) );
+		}
+		if (stats.acc > 0){
+			append( line, Messages.get( this, "stat_acc", stats.acc ) );
+		}
+		if (stats.def > 0){
+			append( line, Messages.get( this, "stat_def", stats.def ) );
+		}
+
+		return line.toString();
+	}
+
+	private static void append( StringBuilder line, String part ){
+		if (line.length() > 0){
+			line.append( "  " );
+		}
+		line.append( part );
 	}
 }

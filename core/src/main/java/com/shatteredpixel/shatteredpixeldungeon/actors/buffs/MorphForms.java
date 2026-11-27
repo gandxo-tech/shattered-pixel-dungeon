@@ -21,6 +21,7 @@
 
 package com.shatteredpixel.shatteredpixeldungeon.actors.buffs;
 
+import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Acidic;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Albino;
@@ -53,6 +54,8 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Warlock;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Wraith;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Bestiary;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
+import com.shatteredpixel.shatteredpixeldungeon.sprites.CharSprite;
+import com.watabou.utils.Random;
 import com.watabou.utils.Reflection;
 
 import java.lang.reflect.Modifier;
@@ -91,6 +94,36 @@ public final class MorphForms {
 		ROCK
 	}
 
+	/**
+	 * Read-only numbers a form shows in the window. They are filled once, then never
+	 * recomputed, so the numbers never change between two openings.
+	 */
+	public static class Stats {
+
+		public static final Stats EMPTY = new Stats( null, 0, 0, 0, 0, 0 );
+
+		public final Class<? extends CharSprite> sprite;
+		public final int hp;
+		public final int dmgMin;
+		public final int dmgMax;
+		public final int acc;
+		public final int def;
+
+		private Stats( Class<? extends CharSprite> sprite,
+					   int hp, int dmgMin, int dmgMax, int acc, int def ){
+			this.sprite = sprite;
+			this.hp = hp;
+			this.dmgMin = dmgMin;
+			this.dmgMax = dmgMax;
+			this.acc = acc;
+			this.def = def;
+		}
+
+		public boolean known(){
+			return hp > 0 || dmgMax > 0;
+		}
+	}
+
 	public static class Form {
 
 		public final Class<? extends Mob> mob;
@@ -98,6 +131,9 @@ public final class MorphForms {
 		public final Class<? extends Buff> debuff;
 		public final float debuffDuration;
 		public final Class<? extends Mob> minion;
+
+		//filled on first look and then kept, so opening the window changes nothing
+		private Stats stats;
 
 		Form( Class<? extends Mob> mob, Ability ability,
 			  Class<? extends Buff> debuff, float debuffDuration,
@@ -107,6 +143,13 @@ public final class MorphForms {
 			this.debuff = debuff;
 			this.debuffDuration = debuffDuration;
 			this.minion = minion;
+		}
+
+		public Stats stats(){
+			if (stats == null){
+				stats = mob == null ? Stats.EMPTY : buildStats( mob );
+			}
+			return stats;
 		}
 
 		public String abilityName(){
@@ -216,6 +259,62 @@ public final class MorphForms {
 		if (cls == null || !Mob.class.isAssignableFrom( cls )) return;
 		if (Modifier.isAbstract( cls.getModifiers() )) return;
 		if (!list.contains( cls )) list.add( (Class<? extends Mob>)cls );
+	}
+
+	/**
+	 * Reads a form's numbers once and keeps only plain values.
+	 *
+	 * The temporary monster is never added to the level, never buffed and never given a
+	 * turn: it exists only for the length of this call, and the window itself never
+	 * creates a monster at all.
+	 */
+	private static Stats buildStats( Class<? extends Mob> cls ){
+
+		Mob mob;
+		try {
+			mob = Reflection.newInstance( cls );
+		} catch (Exception e){
+			return Stats.EMPTY;
+		}
+
+		Class<? extends CharSprite> sprite = null;
+		try {
+			sprite = mob.spriteClass;
+		} catch (Exception ignored){ }
+
+		int hp = 0;
+		try {
+			hp = mob.HT;
+		} catch (Exception ignored){ }
+
+		int acc = 0;
+		int def = 0;
+		try {
+			acc = mob.attackSkill( Dungeon.hero );
+			def = mob.defenseSkill( Dungeon.hero );
+		} catch (Exception ignored){ }
+
+		//the damage range is sampled once with a seed taken from the class name,
+		// so it is always the same range instead of a fresh roll on every opening
+		int min = 0;
+		int max = 0;
+		Random.pushGenerator( cls.getName().hashCode() );
+		try {
+			min = Integer.MAX_VALUE;
+			for (int i = 0; i < 128; i++){
+				int roll = Math.max( 0, mob.damageRoll() );
+				min = Math.min( min, roll );
+				max = Math.max( max, roll );
+			}
+		} catch (Exception ignored){
+		} finally {
+			Random.popGenerator();
+		}
+		if (min == Integer.MAX_VALUE){
+			min = max;
+		}
+
+		return new Stats( sprite, hp, min, max, acc, def );
 	}
 
 	private static Form buildForm( Class<? extends Mob> cls ){

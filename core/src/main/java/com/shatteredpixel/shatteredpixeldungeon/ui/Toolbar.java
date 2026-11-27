@@ -532,13 +532,16 @@ public class Toolbar extends Component {
 
 		float right = width;
 
-		int quickslotsToShow = 4;
-		if (PixelScene.uiCamera.width > 152) quickslotsToShow ++;
-		if (PixelScene.uiCamera.width > 170) quickslotsToShow ++;
+		//the morph button takes room too, so the number of visible quickslots is worked
+		// out from the space actually left, rather than from fixed width thresholds
+		float fixedWidth = btnWait.width() + btnSearch.width() + btnInventory.width() + btnMorph.width();
+		int quickslotsToShow = Math.max( 1, Math.min( 6, (int)((width - fixedWidth - 2) / 20f) ) );
 
 		int startingSlot;
 		if (SPDSettings.quickSwapper() && quickslotsToShow < 6){
-			quickslotsToShow = 3;
+			//the swap button replaces part of the row, so leave room for it as well
+			int withSwap = Math.max( 1, Math.min( 3, (int)((width - fixedWidth - btnSwap.width() - 2) / 20f) ) );
+			quickslotsToShow = withSwap;
 			startingSlot = swappedQuickslots ? 3 : 0;
 			btnSwap.visible = true;
 			btnSwap.active = lastEnabled;
