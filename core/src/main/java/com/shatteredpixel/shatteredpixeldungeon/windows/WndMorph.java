@@ -34,7 +34,6 @@ import com.shatteredpixel.shatteredpixeldungeon.ui.RenderedTextBlock;
 import com.shatteredpixel.shatteredpixeldungeon.ui.ScrollPane;
 import com.shatteredpixel.shatteredpixeldungeon.ui.Window;
 import com.watabou.noosa.ui.Component;
-import com.watabou.utils.Reflection;
 
 import java.util.ArrayList;
 
@@ -65,14 +64,15 @@ public class WndMorph extends Window {
 		int top = (int)title.bottom() + 3;
 
 		final Morph morph = Dungeon.hero != null ? Dungeon.hero.buff( Morph.class ) : null;
+		final Class<? extends Mob> current = morph == null ? null : morph.form();
 
-		RenderedTextBlock current = PixelScene.renderTextBlock( Messages.get(this, "current",
+		RenderedTextBlock currentForm = PixelScene.renderTextBlock( Messages.get(this, "current",
 				morph == null ? Messages.get(this, "none") : morph.formName()), 6 );
-		current.setPos( 0, top );
-		content.add( current );
-		top = (int)current.bottom() + 2;
+		currentForm.setPos( 0, top );
+		content.add( currentForm );
+		top = (int)currentForm.bottom() + 2;
 
-		if (morph != null && morph.form() != null){
+		if (morph != null && current != null){
 
 			RenderedTextBlock ability = PixelScene.renderTextBlock( Messages.get(this, "ability_of",
 					morph.abilityName()), 6 );
@@ -135,25 +135,16 @@ public class WndMorph extends Window {
 
 					final Class<? extends Mob> form = list.get( index );
 
-					MorphForms.Form info = MorphForms.form( form );
-					String label;
-					try {
-						label = info.name();
-					} catch (Exception e){
-						continue;
-					}
-
-					RedButton btn = new RedButton( label ){
+					RedButton btn = new RedButton( MorphForms.nameOf( form ) ){
 						@Override
 						protected void onClick(){
 							hide();
-							Morph buff = Buff.affect( Dungeon.hero, Morph.class );
-							buff.setForm( form );
+							Buff.affect( Dungeon.hero, Morph.class ).setForm( form );
 							BuffIndicator.refreshHero();
 						}
 					};
 					btn.setRect( j == 0 ? 0 : WIDTH/2 + 1, top, WIDTH/2 - 1, BTN_HEIGHT );
-					if (form == (morph == null ? null : morph.form())){
+					if (form == current){
 						btn.textColor( 0xFFFF44 );
 					}
 					content.add( btn );

@@ -25,11 +25,11 @@ import com.shatteredpixel.shatteredpixeldungeon.Assets;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
+import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
+import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Web;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.GnollGeomancer;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
-import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
-import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Web;
 import com.shatteredpixel.shatteredpixeldungeon.effects.Beam;
 import com.shatteredpixel.shatteredpixeldungeon.effects.FloatingText;
 import com.shatteredpixel.shatteredpixeldungeon.effects.Splash;
@@ -42,10 +42,10 @@ import com.shatteredpixel.shatteredpixeldungeon.sprites.HeroSprite;
 import com.shatteredpixel.shatteredpixeldungeon.sprites.MissileSprite;
 import com.shatteredpixel.shatteredpixeldungeon.ui.BuffIndicator;
 import com.shatteredpixel.shatteredpixeldungeon.utils.GLog;
-import com.watabou.utils.PathFinder;
 import com.watabou.noosa.audio.Sample;
 import com.watabou.utils.Bundle;
 import com.watabou.utils.Callback;
+import com.watabou.utils.PathFinder;
 import com.watabou.utils.Random;
 import com.watabou.utils.Reflection;
 
@@ -55,13 +55,15 @@ import java.util.ArrayList;
  * Lets the hero take the form of any monster.
  *
  * While this buff is active the hero uses that monster's combat stats (damage, accuracy)
- * and its on-hit effects, and can use the form's own ability:
- * a magic bolt and its signature debuff for casters, a web for spinners, a minion for
- * necromancers and spawners, a charm for succubi, a death gaze for eyes, a boulder for
- * geomancers, a vampiric bite for bats and ghouls, and the form's melee strike for
- * everything else.
+ * and its on-hit effects, and can use the form's own ability: a magic bolt and its
+ * signature debuff for casters, a web for spinners, a minion for necromancers and
+ * spawners, a charm for succubi, a death gaze for eyes, a boulder for geomancers, a
+ * vampiric bite for bats and ghouls, and the form's melee strike for everything else.
  */
 public class Morph extends Buff {
+
+	//how many minions a single hero may keep around, so summoning cannot flood the level
+	private static final int MAX_MINIONS = 3;
 
 	private Class<? extends Mob> form;
 	//not serialized, rebuilt on demand, used to borrow the monster's combat logic
@@ -88,7 +90,7 @@ public class Morph extends Buff {
 	public Mob proto(){
 		if (form == null) return null;
 		if (prototype == null){
-			prototype = Reflection.newInstance(form);
+			prototype = Reflection.newInstance( form );
 			prototype.sprite = target != null ? target.sprite : null;
 		}
 		return prototype;
@@ -96,7 +98,7 @@ public class Morph extends Buff {
 
 	public String formName(){
 		if (form == null) return Messages.get(this, "none");
-		return Messages.titleCase(Reflection.newInstance(form).name());
+		return MorphForms.nameOf( form );
 	}
 
 	public MorphForms.Form formInfo(){
@@ -167,6 +169,7 @@ public class Morph extends Buff {
 			return;
 		}
 
+
 		final Hero hero = (Hero)target;
 		final MorphForms.Form info = formInfo();
 
@@ -184,7 +187,6 @@ public class Morph extends Buff {
 					GLog.w( Messages.get(Morph.class, "ally_target") );
 					return;
 				}
-
 				//the form can only reach what the hero can actually see:
 				// nothing invisible, and nothing hidden behind a wall
 				if (ch.invisible > 0 || !Dungeon.level.heroFOV[ch.pos]){
@@ -194,29 +196,83 @@ public class Morph extends Buff {
 
 				switch (info.ability){
 					case BOLT:
-						bolt( hero, ch, info );
+						hero.busy();
+						hero.sprite.turnTo( hero.pos, ch.pos );
+						hero.sprite.zap( ch.pos );
+						Sample.INSTANCE.play( Assets.Sounds.ZAP );
+						damage( hero, ch, info, true, 1f, false );
+						hero.spendAndNext( 1f );
 						break;
 					case GAZE:
-						gaze( hero, ch, info );
+						hero.busy();
+						hero.sprite.turnTo( hero.pos, ch.pos );
+						if (ch.sprite != null){
+							hero.sprite.parent.add( new Beam.DeathRay( hero.sprite.center(), ch.sprite.center() ) );
+						}
+						Sample.INSTANCE.play( Assets.Sounds.ZAP );
+						damage( hero, ch, info, true, 1.5f, false );
+						hero.spendAndNext( 1f );
 						break;
 					case WEB:
-						web( hero, ch, info );
+						hero.sprite.turnTo( hero.pos, ch.pos );
+						Blob.seed( ch.pos, 1, Web.class );
+						Web.affectChar( ch );
+						Sample.INSTANCE.play( Assets.Sounds.TRAP );
+						GLog.i( Messages.get(Morph.class, "web_hit") );
+						hero.spendAndNext( 1f );
 						break;
 					case SUMMON:
 						summon( hero, info );
 						break;
 					case CHARM:
-						charm( hero, ch, info );
+						hero.sprite.turnTo( hero.pos, ch.pos );
+						Charm charm = Buff.prolong( ch, Charm.class, Charm.DURATION / 2f );
+						if (charm != null){
+							charm.object = hero.id();
+						}
+						Sample.INSTANCE.play( Assets.Sounds.CHARMS );
+						hero.spendAndNext( 1f );
 						break;
 					case DRAIN:
-						drain( hero, ch, info );
+						hero.busy();
+						hero.sprite.attack( ch.pos, new Callback() {
+							@Override
+							public void call(){
+								damage( hero, ch, info, false, 1f, true );
+								hero.spendAndNext( 1f );
+							}
+						});
 						break;
 					case ROCK:
-						rock( hero, ch, info );
+						hero.busy();
+						hero.sprite.turnTo( hero.pos, ch.pos );
+						((MissileSprite)hero.sprite.parent.recycle( MissileSprite.class ))
+								.reset( hero.sprite, ch.pos, new GnollGeomancer.Boulder(), new Callback() {
+									@Override
+									public void call(){
+										Splash.at( ch.pos, 0x555555, 15 );
+										Sample.INSTANCE.play( Assets.Sounds.ROCKS );
+										damage( hero, ch, info, false, 1f, false );
+										hero.spendAndNext( 1f );
+									}
+								});
 						break;
 					case STRIKE:
 					default:
-						strike( hero, ch );
+						//the strike is still the hero's, so kills, drops and experience are
+						// credited normally, but accuracy, damage and procs come from the form
+						hero.busy();
+						hero.sprite.attack( ch.pos, new Callback() {
+							@Override
+							public void call(){
+								if (Char.hit( hero, ch, false )){
+									ch.damage( Math.max( 1, hero.damageRoll() ), proto() );
+								} else if (ch.sprite != null){
+									ch.sprite.showStatus( CharSprite.NEUTRAL, ch.defenseVerb() );
+								}
+								hero.spendAndNext( 1f );
+							}
+						});
 						break;
 				}
 			}
@@ -228,125 +284,31 @@ public class Morph extends Buff {
 		});
 	}
 
-	//the form's melee attack, usable on any visible target
-	private void strike( final Hero hero, final Char ch ){
-		Sample.INSTANCE.play( Assets.Sounds.ZAP );
-		//the strike is still the hero's, so kills, drops and experience are credited normally,
-		// but accuracy, damage and on-hit effects come from the form
-		hero.busy();
-		hero.sprite.attack( ch.pos, new Callback() {
-			@Override
-			public void call(){
-				hero.attack( ch );
-				hero.spendAndNext( 1f );
+	private void damage( Hero hero, Char ch, MorphForms.Form info,
+						 boolean magic, float damageMulti, boolean lifesteal ){
+
+		if (!Char.hit( hero, ch, magic )){
+			if (ch.sprite != null){
+				ch.sprite.showStatus( CharSprite.NEUTRAL, ch.defenseVerb() );
 			}
-		});
-	}
-
-	private void bolt( Hero hero, Char ch, MorphForms.Form info ){
-		hero.busy();
-		hero.sprite.zap( ch.pos );
-		Sample.INSTANCE.play( Assets.Sounds.ZAP );
-		hero.sprite.turnTo( hero.pos, ch.pos );
-		strikeWith( hero, ch, info, true, 1f, false );
-	}
-
-	private void gaze( Hero hero, Char ch, MorphForms.Form info ){
-		hero.busy();
-		hero.sprite.turnTo( hero.pos, ch.pos );
-		hero.sprite.parent.add( new Beam.DeathRay( hero.sprite.center(), ch.sprite.center() ) );
-		Sample.INSTANCE.play( Assets.Sounds.ZAP );
-		strikeWith( hero, ch, info, true, 1.5f, false );
-	}
-
-	private void drain( Hero hero, Char ch, MorphForms.Form info ){
-		hero.busy();
-		hero.sprite.attack( ch.pos, new Callback() {
-			@Override
-			public void call(){
-				strikeWith( hero, ch, info, false, 1f, true );
-			}
-		});
-	}
-
-	private void web( Hero hero, Char ch, MorphForms.Form info ){
-		hero.busy();
-		hero.sprite.turnTo( hero.pos, ch.pos );
-		Blob.seed( ch.pos, 1, Web.class );
-		Web.affectChar( ch );
-		Sample.INSTANCE.play( Assets.Sounds.TRAP );
-		GLog.i( Messages.get(Morph.class, "web_hit") );
-		hero.spendAndNext( 1f );
-	}
-
-	private void charm( Hero hero, Char ch, MorphForms.Form info ){
-		hero.busy();
-		hero.sprite.turnTo( hero.pos, ch.pos );
-		Charm charm = Buff.prolong( ch, Charm.class, Charm.DURATION / 2f );
-		if (charm != null){
-			charm.object = hero.id();
-		}
-		Sample.INSTANCE.play( Assets.Sounds.CHARMS );
-		hero.spendAndNext( 1f );
-	}
-
-	private void summon( Hero hero, MorphForms.Form info ){
-		int cell = freeCell( hero.pos );
-		if (cell == -1){
-			GLog.w( Messages.get(Morph.class, "no_space") );
 			return;
 		}
 
-		Mob minion = Reflection.newInstance( info.minion );
-		minion.alignment = Char.Alignment.ALLY;
-		minion.state = minion.HUNTING;
-		GameScene.add( minion );
-		ScrollOfTeleportation.appear( minion, cell );
+		int dmg = Math.max( 1, Math.round( hero.damageRoll() * damageMulti ) );
+		ch.damage( dmg, proto() );
 
-		GLog.i( Messages.get(Morph.class, "summoned",
-				Messages.titleCase( Reflection.newInstance(info.minion).name() ) ) );
-		hero.spendAndNext( 1f );
-	}
-
-	private void rock( final Hero hero, final Char ch, final MorphForms.Form info ){
-		hero.busy();
-		hero.sprite.turnTo( hero.pos, ch.pos );
-		final GnollGeomancer.Boulder boulder = new GnollGeomancer.Boulder();
-		((MissileSprite)hero.sprite.parent.recycle( MissileSprite.class ))
-				.reset( hero.sprite, ch.pos, boulder, new Callback() {
-					@Override
-					public void call(){
-						Splash.at( ch.pos, 0x555555, 15 );
-						Sample.INSTANCE.play( Assets.Sounds.ROCKS );
-						strikeWith( hero, ch, info, false, 1f, false );
-					}
-				});
-	}
-
-	private void strikeWith( Hero hero, Char ch, MorphForms.Form info,
-							 boolean magic, float damageMulti, boolean lifesteal ){
-
-		boolean hit = Char.hit( hero, ch, magic );
-		if (hit){
-			int dmg = Math.round( hero.damageRoll() * damageMulti );
-			ch.damage( dmg, proto() );
-
-			if (lifesteal && dmg > 0){
-				int heal = Math.max( 1, dmg / 2 );
-				hero.HP = Math.min( hero.HT, hero.HP + heal );
+		if (lifesteal && dmg > 0){
+			int heal = Math.max( 1, dmg / 2 );
+			hero.HP = Math.min( hero.HT, hero.HP + heal );
+			if (hero.sprite != null){
 				hero.sprite.showStatusWithIcon( CharSprite.POSITIVE, Integer.toString( heal ), FloatingText.HEALING );
 			}
-
-			if (info.debuff != null && ch.isAlive()){
-				applyDebuff( ch, info.debuff, info.debuffDuration );
-				Sample.INSTANCE.play( Assets.Sounds.DEBUFF );
-			}
-
-		} else if (ch.sprite != null){
-			ch.sprite.showStatus( CharSprite.NEUTRAL, ch.defenseVerb() );
 		}
 
-		hero.spendAndNext( 1f );
+		if (info.debuff != null && ch.isAlive()){
+			applyDebuff( ch, info.debuff, info.debuffDuration );
+			Sample.INSTANCE.play( Assets.Sounds.DEBUFF );
+		}
 	}
 
 	@SuppressWarnings("unchecked")
@@ -360,15 +322,79 @@ public class Morph extends Buff {
 		}
 	}
 
-	private static int freeCell( int origin ){
-		ArrayList<Integer> cells = new ArrayList<>();
-		for (int n : PathFinder.NEIGHBOURS8){
-			int c = origin + n;
-			if (Dungeon.level.passable[c] && Actor.findChar( c ) == null){
-				cells.add( c );
+	private void summon( Hero hero, MorphForms.Form info ){
+
+		if (info.minion == null){
+			return;
+		}
+
+		if (minions() >= MAX_MINIONS){
+			GLog.w( Messages.get(Morph.class, "too_many") );
+			return;
+		}
+
+		int cell = freeCell( hero.pos );
+		if (cell == -1){
+			GLog.w( Messages.get(Morph.class, "no_space") );
+			return;
+		}
+
+		Mob minion;
+		try {
+			minion = Reflection.newInstance( info.minion );
+		} catch (Exception e){
+			GLog.w( Messages.get(Morph.class, "summon_failed") );
+			return;
+		}
+
+		minion.alignment = Char.Alignment.ALLY;
+		minion.state = minion.HUNTING;
+		minion.pos = cell;
+		//marks the minion as one of ours, so the summon limit can be counted
+		Buff.affect( minion, MorphMinion.class );
+
+		GameScene.add( minion );
+		ScrollOfTeleportation.appear( minion, cell );
+
+		GLog.i( Messages.get(Morph.class, "summoned", MorphForms.nameOf( info.minion ) ) );
+		hero.spendAndNext( 1f );
+	}
+
+	private static int minions(){
+		int count = 0;
+		for (Mob mob : Dungeon.level.mobs){
+			if (mob.buff( MorphMinion.class ) != null){
+				count++;
 			}
 		}
-		return cells.isEmpty() ? -1 : Random.element( cells );
+		return count;
+	}
+
+	private static int freeCell( int origin ){
+		ArrayList<Integer> candidates = new ArrayList<>();
+		for (int n : PathFinder.NEIGHBOURS8){
+			int cell = origin + n;
+			if (!Dungeon.level.insideMap( cell )) continue;
+			if (Dungeon.level.solid[cell] || !Dungeon.level.passable[cell]) continue;
+			if (Actor.findChar( cell ) != null) continue;
+			candidates.add( cell );
+		}
+		return candidates.isEmpty() ? -1 : Random.element( candidates );
+	}
+
+	/**
+	 * Marker buff carried by every minion a morph form has called, used to cap their number.
+	 */
+	public static class MorphMinion extends Buff {
+		{
+			type = buffType.POSITIVE;
+		}
+
+		@Override
+		public boolean act(){
+			spend( TICK );
+			return true;
+		}
 	}
 
 	private static final String FORM = "form";
