@@ -24,8 +24,8 @@ package com.shatteredpixel.shatteredpixeldungeon.windows;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Morph;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MorphForms;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
-import com.shatteredpixel.shatteredpixeldungeon.journal.Bestiary;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.PixelScene;
 import com.shatteredpixel.shatteredpixeldungeon.ui.BuffIndicator;
@@ -36,10 +36,12 @@ import com.shatteredpixel.shatteredpixeldungeon.ui.Window;
 import com.watabou.noosa.ui.Component;
 import com.watabou.utils.Reflection;
 
+import java.util.ArrayList;
+
 public class WndMorph extends Window {
 
-	private static final int WIDTH		= 130;
-	private static final int HEIGHT		= 160;
+	private static final int WIDTH		= 135;
+	private static final int HEIGHT		= 180;
 	private static final int BTN_HEIGHT	= 16;
 	private static final int GAP		= 2;
 
@@ -68,19 +70,32 @@ public class WndMorph extends Window {
 				morph == null ? Messages.get(this, "none") : morph.formName()), 6 );
 		current.setPos( 0, top );
 		content.add( current );
-		top = (int)current.bottom() + 4;
+		top = (int)current.bottom() + 2;
 
-		if (morph != null){
+		if (morph != null && morph.form() != null){
 
-			RedButton ability = new RedButton( Messages.get(this, "ability") ){
+			RenderedTextBlock ability = PixelScene.renderTextBlock( Messages.get(this, "ability_of",
+					morph.abilityName()), 6 );
+			ability.hardlight( 0xFFFF44 );
+			ability.setPos( 0, top );
+			content.add( ability );
+			top = (int)ability.bottom() + 2;
+
+			RenderedTextBlock desc = PixelScene.renderTextBlock( morph.abilityDesc(), 6 );
+			desc.maxWidth( WIDTH );
+			desc.setPos( 0, top );
+			content.add( desc );
+			top = (int)desc.bottom() + 4;
+
+			RedButton use = new RedButton( Messages.get(this, "ability") ){
 				@Override
 				protected void onClick(){
 					hide();
 					morph.useAbility();
 				}
 			};
-			ability.setRect( 0, top, WIDTH, BTN_HEIGHT );
-			content.add( ability );
+			use.setRect( 0, top, WIDTH, BTN_HEIGHT );
+			content.add( use );
 			top += BTN_HEIGHT + GAP;
 
 			RedButton revert = new RedButton( Messages.get(this, "revert") ){
@@ -96,33 +111,58 @@ public class WndMorph extends Window {
 			top += BTN_HEIGHT + GAP + 2;
 		}
 
-		for (Bestiary category : new Bestiary[]{
-				Bestiary.REGIONAL, Bestiary.BOSSES, Bestiary.UNIVERSAL, Bestiary.RARE, Bestiary.QUEST}){
-			for (Class<?> cls : category.entities()){
-				if (!Mob.class.isAssignableFrom(cls)) continue;
+		RenderedTextBlock forms = PixelScene.renderTextBlock( Messages.get(this, "forms"), 7 );
+		forms.hardlight( TITLE_COLOR );
+		forms.setPos( 0, top );
+		content.add( forms );
+		top = (int)forms.bottom() + 2;
 
-				final Class<? extends Mob> form = (Class<? extends Mob>)cls;
+		for (String category : MorphForms.groups().keySet()){
 
-				String name;
-				try {
-					name = Messages.titleCase( Reflection.newInstance(form).name() );
-				} catch (Exception e){
-					continue;
+			RenderedTextBlock header = PixelScene.renderTextBlock( category, 6 );
+			header.setPos( 0, top );
+			content.add( header );
+			top = (int)header.bottom() + 1;
+
+			ArrayList<Class<? extends Mob>> list = MorphForms.groups().get( category );
+
+			for (int i = 0; i < list.size(); i += 2){
+
+				for (int j = 0; j < 2; j++){
+
+					int index = i + j;
+					if (index >= list.size()) continue;
+
+					final Class<? extends Mob> form = list.get( index );
+
+					MorphForms.Form info = MorphForms.form( form );
+					String label;
+					try {
+						label = info.name();
+					} catch (Exception e){
+						continue;
+					}
+
+					RedButton btn = new RedButton( label ){
+						@Override
+						protected void onClick(){
+							hide();
+							Morph buff = Buff.affect( Dungeon.hero, Morph.class );
+							buff.setForm( form );
+							BuffIndicator.refreshHero();
+						}
+					};
+					btn.setRect( j == 0 ? 0 : WIDTH/2 + 1, top, WIDTH/2 - 1, BTN_HEIGHT );
+					if (form == (morph == null ? null : morph.form())){
+						btn.textColor( 0xFFFF44 );
+					}
+					content.add( btn );
 				}
 
-				RedButton btn = new RedButton( name ){
-					@Override
-					protected void onClick(){
-						hide();
-						Morph buff = Buff.affect( Dungeon.hero, Morph.class );
-						buff.setForm( form );
-						BuffIndicator.refreshHero();
-					}
-				};
-				btn.setRect( 0, top, WIDTH, BTN_HEIGHT );
-				content.add( btn );
 				top += BTN_HEIGHT + GAP;
 			}
+
+			top += 2;
 		}
 
 		content.setRect( 0, 0, WIDTH, top );
